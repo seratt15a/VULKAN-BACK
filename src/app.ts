@@ -12,11 +12,16 @@ import { workoutPlansRouter } from './routes/workoutPlans.routes.js';
 import { checkInsRouter } from './routes/checkIns.routes.js';
 import { signupRequestsRouter } from './routes/signupRequests.routes.js';
 import { auditLogRouter } from './routes/auditLog.routes.js';
+import { contactRouter } from './routes/contact.routes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 export const app = express();
 
-app.use(cors({ origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173' }));
+const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim());
+
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 app.use(morgan('dev'));
 
@@ -32,5 +37,6 @@ app.use('/workout-plans', workoutPlansRouter);
 app.use('/check-ins', checkInsRouter);
 app.use('/signup-requests', signupRequestsRouter);
 app.use('/audit-log', auditLogRouter);
+app.use('/contact', contactRouter);
 
 app.use(errorHandler);

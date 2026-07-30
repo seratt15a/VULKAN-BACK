@@ -92,3 +92,85 @@ export async function sendWelcomeEmail(to: string, name: string, tempPassword: s
     return false;
   }
 }
+
+function contactEmailHtml(name: string, email: string, phone: string | undefined, message: string) {
+  return `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#0a0a0a;font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0a0a;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background-color:#121212;border-radius:16px;overflow:hidden;border:1px solid #232323;">
+          <tr>
+            <td style="background:linear-gradient(135deg,#e8112a,#b30d20);padding:36px 40px;text-align:center;">
+              <span style="font-family:Arial,Helvetica,sans-serif;font-weight:900;font-size:30px;letter-spacing:1px;color:#ffffff;">VUL<span style="color:#0a0a0a;">KAN</span></span>
+              <div style="margin-top:6px;font-size:12px;letter-spacing:3px;color:rgba(255,255,255,0.85);text-transform:uppercase;">Nuevo mensaje de contacto</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#1c1c1c;border-radius:10px;border:1px solid #2a2a2a;margin-bottom:24px;">
+                <tr>
+                  <td style="padding:20px 24px;">
+                    <div style="font-size:11px;letter-spacing:1.5px;color:#8a8a8a;text-transform:uppercase;margin-bottom:6px;">Nombre</div>
+                    <div style="font-size:15px;color:#ffffff;margin-bottom:16px;">${escapeHtml(name)}</div>
+                    <div style="font-size:11px;letter-spacing:1.5px;color:#8a8a8a;text-transform:uppercase;margin-bottom:6px;">Correo</div>
+                    <div style="font-size:15px;color:#ffffff;margin-bottom:16px;">${escapeHtml(email)}</div>
+                    ${
+                      phone
+                        ? `<div style="font-size:11px;letter-spacing:1.5px;color:#8a8a8a;text-transform:uppercase;margin-bottom:6px;">Teléfono</div>
+                    <div style="font-size:15px;color:#ffffff;margin-bottom:16px;">${escapeHtml(phone)}</div>`
+                        : ''
+                    }
+                    <div style="font-size:11px;letter-spacing:1.5px;color:#8a8a8a;text-transform:uppercase;margin-bottom:6px;">Mensaje</div>
+                    <div style="font-size:15px;color:#ffffff;white-space:pre-wrap;line-height:1.6;">${escapeHtml(message)}</div>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0;color:#7a7a7a;font-size:12px;line-height:1.6;">
+                Responde directamente a este correo para contestarle a ${escapeHtml(name)}.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 40px;background-color:#0d0d0d;text-align:center;border-top:1px solid #232323;">
+              <p style="margin:0;color:#5a5a5a;font-size:11px;">© ${new Date().getFullYear()} VULKAN. Enviado desde el formulario de contacto de la landing.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+interface ContactMessage {
+  name: string;
+  email: string;
+  phone?: string;
+  message: string;
+}
+
+export async function sendContactMessage({ name, email, phone, message }: ContactMessage): Promise<boolean> {
+  if (!SENDGRID_API_KEY || !SENDGRID_FROM_EMAIL) {
+    console.warn('[mailer] SENDGRID_API_KEY/SENDGRID_FROM_EMAIL no configurados; mensaje de contacto no enviado.');
+    return false;
+  }
+
+  try {
+    await sgMail.send({
+      to: SENDGRID_FROM_EMAIL,
+      from: { email: SENDGRID_FROM_EMAIL, name: 'VULKAN Gym — Formulario de contacto' },
+      replyTo: email,
+      subject: `Nuevo mensaje de contacto de ${name}`,
+      html: contactEmailHtml(name, email, phone, message),
+      text: `Nombre: ${name}\nCorreo: ${email}${phone ? `\nTeléfono: ${phone}` : ''}\n\nMensaje:\n${message}`,
+    });
+    return true;
+  } catch (err) {
+    console.error('[mailer] Error enviando mensaje de contacto:', err);
+    return false;
+  }
+}
