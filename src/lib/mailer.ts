@@ -24,9 +24,8 @@ function buildTransporter(): Promise<nodemailer.Transporter | null> {
     .then(({ address }) => {
       const smtpOptions = {
         host: address,
-        port: 587,
-        secure: false,
-        requireTLS: true,
+        port: 465,
+        secure: true,
         tls: { servername: 'smtp.gmail.com' },
         auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
       } as SMTPTransport.Options;
