@@ -1,45 +1,11 @@
-import dns from 'node:dns';
-import nodemailer from 'nodemailer';
-import type SMTPTransport from 'nodemailer/lib/smtp-transport/index.js';
+import sgMail from '@sendgrid/mail';
 
-const GMAIL_USER = process.env.GMAIL_USER;
-const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
 const APP_URL = process.env.FRONTEND_URL ?? 'https://vulkan-front.vercel.app';
 
-// Some hosts (e.g. Railway) advertise IPv6 routes for smtp.gmail.com that
-// aren't actually reachable (ENETUNREACH). Neither the `family` transport
-// option nor a custom `lookup` override is honored by nodemailer's SMTP
-// connection, so we resolve the IPv4 address ourselves and connect to that
-// literal IP, keeping `servername` set so TLS still validates the real host.
-let transporterPromise: Promise<nodemailer.Transporter | null> | null = null;
-
-function buildTransporter(): Promise<nodemailer.Transporter | null> {
-  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
-    console.warn('[mailer] GMAIL_USER/GMAIL_APP_PASSWORD no configurados; correo de bienvenida no enviado.');
-    return Promise.resolve(null);
-  }
-
-  return dns.promises
-    .lookup('smtp.gmail.com', { family: 4 })
-    .then(({ address }) => {
-      const smtpOptions = {
-        host: address,
-        port: 465,
-        secure: true,
-        tls: { servername: 'smtp.gmail.com' },
-        auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
-      } as SMTPTransport.Options;
-      return nodemailer.createTransport(smtpOptions);
-    })
-    .catch((err) => {
-      console.error('[mailer] No se pudo resolver smtp.gmail.com por IPv4:', err);
-      return null;
-    });
-}
-
-function getTransporter(): Promise<nodemailer.Transporter | null> {
-  transporterPromise ??= buildTransporter();
-  return transporterPromise;
+if (SENDGRID_API_KEY) {
+  sgMail.setApiKey(SENDGRID_API_KEY);
 }
 
 function welcomeEmailHtml(name: string, email: string, tempPassword: string) {
@@ -107,13 +73,15 @@ function escapeHtml(value: string) {
 }
 
 export async function sendWelcomeEmail(to: string, name: string, tempPassword: string): Promise<boolean> {
-  const transporter = await getTransporter();
-  if (!transporter) return false;
+  if (!SENDGRID_API_KEY || !SENDGRID_FROM_EMAIL) {
+    console.warn('[mailer] SENDGRID_API_KEY/SENDGRID_FROM_EMAIL no configurados; correo de bienvenida no enviado.');
+    return false;
+  }
 
   try {
-    await transporter.sendMail({
-      from: `"VULKAN Gym" <${GMAIL_USER}>`,
+    await sgMail.send({
       to,
+      from: { email: SENDGRID_FROM_EMAIL, name: 'VULKAN Gym' },
       subject: '¡Bienvenido a VULKAN! Tus credenciales de acceso',
       html: welcomeEmailHtml(name, to, tempPassword),
       text: `¡Bienvenido a VULKAN, ${name}!\n\nTu cuenta fue creada.\nCorreo: ${to}\nContraseña temporal: ${tempPassword}\n\nInicia sesión en ${APP_URL}/login`,
