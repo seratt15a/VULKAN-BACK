@@ -36,7 +36,24 @@ export async function list(_req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   const body = createSchema.parse(req.body);
-  const request = await prisma.signupRequest.create({ data: body });
+  const email = body.email.trim().toLowerCase();
+
+  const existingUser = await prisma.user.findUnique({ where: { email } });
+  if (existingUser) {
+    throw conflict('Ya existe una cuenta con este correo. Si ya eres miembro, inicia sesión en vez de registrarte de nuevo.');
+  }
+
+  // MySQL's default collation already compares strings case-insensitively,
+  // so a plain equality check is enough (Prisma's `mode: 'insensitive'`
+  // filter isn't supported on the MySQL connector).
+  const pendingRequest = await prisma.signupRequest.findFirst({
+    where: { email, status: 'pendiente' },
+  });
+  if (pendingRequest) {
+    throw conflict('Ya hay una solicitud pendiente con este correo. Espera a que el equipo de VULKAN la revise.');
+  }
+
+  const request = await prisma.signupRequest.create({ data: { ...body, email } });
   res.status(201).json(serialize(request));
 }
 
@@ -47,9 +64,9 @@ export async function approve(req: Request, res: Response) {
   const request = await prisma.signupRequest.findUnique({ where: { id } });
   if (!request) throw notFound('Solicitud no encontrada.');
 
-  const emailTaken = await prisma.member.findFirst({ where: { email: request.email.trim().toLowerCase() } });
+  const emailTaken = await prisma.user.findUnique({ where: { email: request.email.trim().toLowerCase() } });
   if (emailTaken) {
-    throw conflict(`Ya existe un miembro con el correo ${request.email}.`);
+    throw conflict(`Ya existe una cuenta con el correo ${request.email}.`);
   }
 
   const tempPassword = crypto.randomBytes(6).toString('base64url');
