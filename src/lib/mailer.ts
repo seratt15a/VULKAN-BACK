@@ -1,3 +1,4 @@
+import dns from 'node:dns';
 import nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport/index.js';
 
@@ -5,12 +6,20 @@ const GMAIL_USER = process.env.GMAIL_USER;
 const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
 const APP_URL = process.env.FRONTEND_URL ?? 'https://vulkan-front.vercel.app';
 
+// Some hosts (e.g. Railway) advertise IPv6 routes that don't actually have
+// egress connectivity, so Node picks an unreachable AAAA record for
+// smtp.gmail.com. Force IPv4 resolution explicitly rather than relying on
+// the (unsupported) `family` transport option.
+function lookupIPv4(hostname: string, _options: unknown, callback: (...args: never[]) => void) {
+  dns.lookup(hostname, { family: 4 }, callback as (err: NodeJS.ErrnoException | null, address: string, family: number) => void);
+}
+
 const smtpOptions = {
   host: 'smtp.gmail.com',
   port: 587,
   secure: false,
   requireTLS: true,
-  family: 4,
+  lookup: lookupIPv4,
   auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
 } as SMTPTransport.Options;
 
