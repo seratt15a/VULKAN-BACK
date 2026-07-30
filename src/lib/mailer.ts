@@ -6,27 +6,42 @@ const GMAIL_USER = process.env.GMAIL_USER;
 const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
 const APP_URL = process.env.FRONTEND_URL ?? 'https://vulkan-front.vercel.app';
 
-// Some hosts (e.g. Railway) advertise IPv6 routes that don't actually have
-// egress connectivity, so Node picks an unreachable AAAA record for
-// smtp.gmail.com. Force IPv4 resolution explicitly rather than relying on
-// the (unsupported) `family` transport option.
-function lookupIPv4(hostname: string, _options: unknown, callback: (...args: never[]) => void) {
-  dns.lookup(hostname, { family: 4 }, callback as (err: NodeJS.ErrnoException | null, address: string, family: number) => void);
+// Some hosts (e.g. Railway) advertise IPv6 routes for smtp.gmail.com that
+// aren't actually reachable (ENETUNREACH). Neither the `family` transport
+// option nor a custom `lookup` override is honored by nodemailer's SMTP
+// connection, so we resolve the IPv4 address ourselves and connect to that
+// literal IP, keeping `servername` set so TLS still validates the real host.
+let transporterPromise: Promise<nodemailer.Transporter | null> | null = null;
+
+function buildTransporter(): Promise<nodemailer.Transporter | null> {
+  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
+    console.warn('[mailer] GMAIL_USER/GMAIL_APP_PASSWORD no configurados; correo de bienvenida no enviado.');
+    return Promise.resolve(null);
+  }
+
+  return dns.promises
+    .lookup('smtp.gmail.com', { family: 4 })
+    .then(({ address }) => {
+      const smtpOptions = {
+        host: address,
+        port: 587,
+        secure: false,
+        requireTLS: true,
+        tls: { servername: 'smtp.gmail.com' },
+        auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
+      } as SMTPTransport.Options;
+      return nodemailer.createTransport(smtpOptions);
+    })
+    .catch((err) => {
+      console.error('[mailer] No se pudo resolver smtp.gmail.com por IPv4:', err);
+      return null;
+    });
 }
 
-const smtpOptions = {
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  requireTLS: true,
-  lookup: lookupIPv4,
-  auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
-} as SMTPTransport.Options;
-
-const transporter =
-  GMAIL_USER && GMAIL_APP_PASSWORD
-    ? nodemailer.createTransport(smtpOptions)
-    : null;
+function getTransporter(): Promise<nodemailer.Transporter | null> {
+  transporterPromise ??= buildTransporter();
+  return transporterPromise;
+}
 
 function welcomeEmailHtml(name: string, email: string, tempPassword: string) {
   return `<!DOCTYPE html>
@@ -93,10 +108,8 @@ function escapeHtml(value: string) {
 }
 
 export async function sendWelcomeEmail(to: string, name: string, tempPassword: string): Promise<boolean> {
-  if (!transporter) {
-    console.warn('[mailer] GMAIL_USER/GMAIL_APP_PASSWORD no configurados; correo de bienvenida no enviado.');
-    return false;
-  }
+  const transporter = await getTransporter();
+  if (!transporter) return false;
 
   try {
     await transporter.sendMail({
