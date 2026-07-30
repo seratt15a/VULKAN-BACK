@@ -60,3 +60,22 @@ export async function me(req: Request, res: Response) {
   });
   res.json({ session: sessionFromUser(user) });
 }
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(6),
+});
+
+export async function changePassword(req: Request, res: Response) {
+  const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: req.auth!.userId } });
+  const currentOk = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!currentOk) {
+    throw unauthorized('Tu contraseña actual no es correcta.');
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+  res.status(204).end();
+}

@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import bcrypt from 'bcryptjs';
+import { afterAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { app } from '../app.js';
+import { prisma } from '../lib/prisma.js';
 
 describe('auth', () => {
   it('logs in with valid seeded credentials', async () => {
@@ -13,6 +15,46 @@ describe('auth', () => {
   it('rejects an invalid password', async () => {
     const res = await request(app).post('/auth/login').send({ email: 'admin@vulkangym.com', password: 'wrong' });
     expect(res.status).toBe(401);
+  });
+
+  it('rejects a password change with the wrong current password (seeded account untouched)', async () => {
+    const login = await request(app).post('/auth/login').send({ email: 'admin@vulkangym.com', password: 'vulkan2026' });
+    const res = await request(app)
+      .patch('/auth/password')
+      .set('Authorization', `Bearer ${login.body.token}`)
+      .send({ currentPassword: 'wrong', newPassword: 'newpassword123' });
+    expect(res.status).toBe(401);
+  });
+
+  describe('with a throwaway account', () => {
+    let userId: string;
+    const email = 'throwaway-password-test@vulkangym.com';
+
+    afterAll(async () => {
+      await prisma.user.deleteMany({ where: { email } });
+    });
+
+    it('changes the password and allows logging in with the new one', async () => {
+      const passwordHash = await bcrypt.hash('original123', 10);
+      const user = await prisma.user.create({ data: { email, passwordHash, role: 'ADMIN', name: 'Throwaway' } });
+      userId = user.id;
+
+      const login = await request(app).post('/auth/login').send({ email, password: 'original123' });
+      expect(login.status).toBe(200);
+
+      const change = await request(app)
+        .patch('/auth/password')
+        .set('Authorization', `Bearer ${login.body.token}`)
+        .send({ currentPassword: 'original123', newPassword: 'brandnew456' });
+      expect(change.status).toBe(204);
+
+      const oldLogin = await request(app).post('/auth/login').send({ email, password: 'original123' });
+      expect(oldLogin.status).toBe(401);
+
+      const newLogin = await request(app).post('/auth/login').send({ email, password: 'brandnew456' });
+      expect(newLogin.status).toBe(200);
+      expect(userId).toBeTruthy();
+    });
   });
 });
 
