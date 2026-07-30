@@ -6,6 +6,7 @@ import type { Request, Response } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { toDateStr } from '../lib/dates.js';
 import { conflict, notFound } from '../lib/errors.js';
+import { sendWelcomeEmail } from '../lib/mailer.js';
 
 function serialize(r: SignupRequest) {
   return {
@@ -77,7 +78,9 @@ export async function approve(req: Request, res: Response) {
     return created;
   });
 
-  res.json({ memberId: member.id, temporaryPassword: tempPassword });
+  const emailSent = await sendWelcomeEmail(member.email, member.name, tempPassword);
+
+  res.json({ memberId: member.id, temporaryPassword: tempPassword, emailSent });
 }
 
 export async function reject(req: Request, res: Response) {
