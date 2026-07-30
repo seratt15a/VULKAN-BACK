@@ -17,6 +17,10 @@ import { errorHandler } from './middleware/errorHandler.js';
 
 export const app = express();
 
+// Railway sits behind a reverse proxy; without this, every request looks
+// like it comes from the same IP, which breaks per-IP rate limiting below.
+app.set('trust proxy', 1);
+
 const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173')
   .split(',')
   .map((origin) => origin.trim());

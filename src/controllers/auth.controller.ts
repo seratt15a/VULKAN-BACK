@@ -1,9 +1,11 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import type { Request, Response } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { signToken } from '../lib/jwt.js';
 import { unauthorized } from '../lib/errors.js';
+import { sendPasswordResetEmail } from '../lib/mailer.js';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -77,5 +79,30 @@ export async function changePassword(req: Request, res: Response) {
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
   await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+  res.status(204).end();
+}
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+export async function forgotPassword(req: Request, res: Response) {
+  const { email } = forgotPasswordSchema.parse(req.body);
+
+  const user = await prisma.user.findUnique({
+    where: { email: email.trim().toLowerCase() },
+    include: { member: true, trainer: true },
+  });
+
+  // Always respond the same way whether or not the account exists, so this
+  // endpoint can't be used to find out which emails have accounts.
+  if (user) {
+    const newPassword = crypto.randomBytes(6).toString('base64url');
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    const name = user.member?.name ?? user.trainer?.name ?? user.name ?? 'ahí';
+    await sendPasswordResetEmail(user.email, name, newPassword);
+  }
+
   res.status(204).end();
 }

@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import { publicFormLimiter } from '../middleware/rateLimit.js';
 import * as signupRequests from '../controllers/signupRequests.controller.js';
 
 export const signupRequestsRouter = Router();
 
 // Public: anyone can submit a signup request from the marketing/signup page.
-signupRequestsRouter.post('/', asyncHandler(signupRequests.create));
+signupRequestsRouter.post('/', publicFormLimiter, asyncHandler(signupRequests.create));
 
 signupRequestsRouter.get('/', requireAuth, requireRole('ADMIN'), asyncHandler(signupRequests.list));
 signupRequestsRouter.post('/:id/approve', requireAuth, requireRole('ADMIN'), asyncHandler(signupRequests.approve));
