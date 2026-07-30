@@ -17,9 +17,13 @@ import { errorHandler } from './middleware/errorHandler.js';
 
 export const app = express();
 
-// Railway sits behind a reverse proxy; without this, every request looks
-// like it comes from the same IP, which breaks per-IP rate limiting below.
-app.set('trust proxy', 1);
+// Railway's edge fleet adds two hops before the request reaches this app,
+// and the specific edge IP in that chain rotates per request — trusting
+// only 1 hop (a common default) resolves req.ip to that rotating edge IP
+// instead of the real client, silently breaking per-IP rate limiting.
+// Trusting the whole chain reads the client's real IP (the left-most
+// entry in X-Forwarded-For) regardless of how many hops Railway uses.
+app.set('trust proxy', true);
 
 const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173')
   .split(',')
