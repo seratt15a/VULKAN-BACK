@@ -90,6 +90,47 @@ describe('classes', () => {
   });
 });
 
+describe('signup requests', () => {
+  const email = 'throwaway-signup-test@vulkangym.com';
+
+  afterAll(async () => {
+    await prisma.user.deleteMany({ where: { email } });
+    await prisma.member.deleteMany({ where: { email } });
+    await prisma.signupRequest.deleteMany({ where: { email } });
+  });
+
+  it('blocks approval until the email is verified, then allows it once verified', async () => {
+    const login = await request(app).post('/auth/login').send({ email: 'admin@vulkangym.com', password: 'vulkan2026' });
+    const adminToken = login.body.token;
+
+    const created = await request(app)
+      .post('/signup-requests')
+      .send({ name: 'Throwaway Signup', email, phone: '+52 55 0000 0000', planInterest: 'Básico' });
+    expect(created.status).toBe(201);
+    expect(created.body.emailVerified).toBe(false);
+
+    const badToken = await request(app).post('/signup-requests/verify').send({ token: 'not-a-real-token' });
+    expect(badToken.status).toBe(400);
+
+    const blockedApprove = await request(app)
+      .post(`/signup-requests/${created.body.id}/approve`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ trainerId: 't1' });
+    expect(blockedApprove.status).toBe(409);
+
+    const stored = await prisma.signupRequest.findUnique({ where: { id: created.body.id } });
+    const verify = await request(app).post('/signup-requests/verify').send({ token: stored?.verificationToken });
+    expect(verify.status).toBe(200);
+
+    const approve = await request(app)
+      .post(`/signup-requests/${created.body.id}/approve`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ trainerId: 't1' });
+    expect(approve.status).toBe(200);
+    expect(approve.body.memberId).toBeTruthy();
+  });
+});
+
 describe('error handling', () => {
   it('returns a clean 400 instead of a raw 500 when a referenced id does not exist', async () => {
     const login = await request(app).post('/auth/login').send({ email: 'admin@vulkangym.com', password: 'vulkan2026' });

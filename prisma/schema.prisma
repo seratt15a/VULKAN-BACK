@@ -226,13 +226,15 @@ model CheckInRecord {
 }
 
 model SignupRequest {
-  id           String   @id @default(cuid())
-  name         String
-  email        String
-  phone        String
-  planInterest String
-  requestedAt  DateTime @default(now())
-  status       String   @default("pendiente")
+  id                String   @id @default(cuid())
+  name              String
+  email             String
+  phone             String
+  planInterest      String
+  requestedAt       DateTime @default(now())
+  status            String   @default("pendiente")
+  emailVerified     Boolean  @default(false)
+  verificationToken String?  @unique
 }
 
 model AuditLogEntry {

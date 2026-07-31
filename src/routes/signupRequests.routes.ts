@@ -8,6 +8,8 @@ export const signupRequestsRouter = Router();
 
 // Public: anyone can submit a signup request from the marketing/signup page.
 signupRequestsRouter.post('/', publicFormLimiter, asyncHandler(signupRequests.create));
+// Public: confirms the email address behind a pending signup request.
+signupRequestsRouter.post('/verify', publicFormLimiter, asyncHandler(signupRequests.verify));
 
 signupRequestsRouter.get('/', requireAuth, requireRole('ADMIN'), asyncHandler(signupRequests.list));
 signupRequestsRouter.post('/:id/approve', requireAuth, requireRole('ADMIN'), asyncHandler(signupRequests.approve));

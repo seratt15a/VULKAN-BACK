@@ -5,8 +5,10 @@ import type { SignupRequest } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { toDateStr } from '../lib/dates.js';
-import { conflict, notFound } from '../lib/errors.js';
-import { sendWelcomeEmail } from '../lib/mailer.js';
+import { badRequest, conflict, notFound } from '../lib/errors.js';
+import { sendWelcomeEmail, sendSignupVerificationEmail } from '../lib/mailer.js';
+
+const APP_URL = process.env.FRONTEND_URL ?? 'https://vulkan-front.vercel.app';
 
 function serialize(r: SignupRequest) {
   return {
@@ -17,6 +19,7 @@ function serialize(r: SignupRequest) {
     planInterest: r.planInterest,
     requestedAt: toDateStr(r.requestedAt),
     status: r.status,
+    emailVerified: r.emailVerified,
   };
 }
 
@@ -53,8 +56,29 @@ export async function create(req: Request, res: Response) {
     throw conflict('Ya hay una solicitud pendiente con este correo. Espera a que el equipo de VULKAN la revise.');
   }
 
-  const request = await prisma.signupRequest.create({ data: { ...body, email } });
+  const verificationToken = crypto.randomBytes(24).toString('base64url');
+  const request = await prisma.signupRequest.create({ data: { ...body, email, verificationToken } });
+
+  const verifyUrl = `${APP_URL}/verificar-correo?token=${verificationToken}`;
+  await sendSignupVerificationEmail(email, body.name, verifyUrl);
+
   res.status(201).json(serialize(request));
+}
+
+export async function verify(req: Request, res: Response) {
+  const { token } = z.object({ token: z.string().min(1) }).parse(req.body);
+
+  const request = await prisma.signupRequest.findUnique({ where: { verificationToken: token } });
+  if (!request) throw badRequest('Enlace de verificación inválido o expirado.');
+
+  if (!request.emailVerified) {
+    await prisma.signupRequest.update({
+      where: { id: request.id },
+      data: { emailVerified: true, verificationToken: null },
+    });
+  }
+
+  res.json({ name: request.name });
 }
 
 export async function approve(req: Request, res: Response) {
@@ -63,6 +87,9 @@ export async function approve(req: Request, res: Response) {
 
   const request = await prisma.signupRequest.findUnique({ where: { id } });
   if (!request) throw notFound('Solicitud no encontrada.');
+  if (!request.emailVerified) {
+    throw conflict('Este correo aún no ha sido confirmado por el solicitante.');
+  }
 
   const emailTaken = await prisma.user.findUnique({ where: { email: request.email.trim().toLowerCase() } });
   if (emailTaken) {
